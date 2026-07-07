@@ -149,37 +149,70 @@ function setWidgetPairs(widget, pairs) {
  * Side-tagged numbering for figures/tables inside the panels. Every labeled
  * container consumes one slot X from a page-wide, per-kind counter; a
  * matched pair shares its X, displayed as "Figure O.X" / "Figure N.X".
- * Because the enumerator is set before MyST's global enumeration (with
- * `enumerated: false`, so the host page's own counters are untouched),
- * caption numbers and cross-references resolve natively. Unlabeled panel
- * containers stay unnumbered — they cannot be cross-referenced anyway.
+ * Slots are allocated by walking the two panels in step (a merge walk), so
+ * a figure inserted on one side takes its slot at its actual position and
+ * both panels stay monotonic — pairing then shows up as a gap on the other
+ * side (O.1, O.3 across from N.1, N.2, N.3 means the old document has no
+ * counterpart to N.2). Pairs whose relative order differs between the
+ * panels fall back to old-side order. Because the enumerator is set before
+ * MyST's global enumeration (with `enumerated: false`, so the host page's
+ * own counters are untouched), caption numbers and cross-references resolve
+ * natively. Unlabeled panel containers stay unnumbered — they cannot be
+ * cross-referenced anyway.
  */
 function tagPanelContainers(info, utils, kindCounts) {
-  const nextSlot = (node) => {
-    const kind = node.kind ?? 'figure';
-    kindCounts[kind] = (kindCounts[kind] ?? 0) + 1;
-    return kindCounts[kind];
-  };
   const partners = new Map(
     info.pairs
       .filter((pair) => pair.old.type === 'container' && pair.new.type === 'container')
       .map((pair) => [pair.old, pair.new]),
   );
   const pairedNew = new Set(partners.values());
-  for (const node of utils.selectAll('container', info.oldPanel)) {
-    if (!node.identifier) continue;
+  const kindOf = (node) => node.kind ?? 'figure';
+  const nextSlot = (kind) => {
+    kindCounts[kind] = (kindCounts[kind] ?? 0) + 1;
+    return kindCounts[kind];
+  };
+  const tag = (node, side, slot) => {
     node.enumerated = false;
-    node.enumerator = `O.${nextSlot(node)}`;
-    const partner = partners.get(node);
-    if (partner) {
-      partner.enumerated = false;
-      partner.enumerator = node.enumerator.replace(/^O\./, 'N.');
+    node.enumerator = `${side}.${slot}`;
+  };
+  const olds = utils.selectAll('container', info.oldPanel).filter((node) => node.identifier);
+  const news = utils.selectAll('container', info.newPanel).filter((node) => node.identifier);
+  for (const kind of new Set([...olds, ...news].map(kindOf))) {
+    const oldQueue = olds.filter((node) => kindOf(node) === kind);
+    const newQueue = news.filter((node) => kindOf(node) === kind);
+    let i = 0;
+    let j = 0;
+    while (i < oldQueue.length || j < newQueue.length) {
+      const oldNode = oldQueue[i];
+      const newNode = newQueue[j];
+      // Already tagged through its partner (including crossed-order pairs).
+      if (newNode && newNode.enumerator != null && pairedNew.has(newNode)) {
+        j += 1;
+      } else if (oldNode && !partners.has(oldNode)) {
+        tag(oldNode, 'O', nextSlot(kind));
+        i += 1;
+      } else if (newNode && !pairedNew.has(newNode)) {
+        tag(newNode, 'N', nextSlot(kind));
+        j += 1;
+      } else if (oldNode && partners.get(oldNode) === newNode) {
+        const slot = nextSlot(kind);
+        tag(oldNode, 'O', slot);
+        tag(newNode, 'N', slot);
+        i += 1;
+        j += 1;
+      } else if (oldNode) {
+        // Crossed pair order: number at the old-side position; the partner
+        // is skipped when the walk reaches it.
+        const slot = nextSlot(kind);
+        tag(oldNode, 'O', slot);
+        const partner = partners.get(oldNode);
+        if (partner) tag(partner, 'N', slot);
+        i += 1;
+      } else {
+        j += 1;
+      }
     }
-  }
-  for (const node of utils.selectAll('container', info.newPanel)) {
-    if (pairedNew.has(node) || !node.identifier) continue;
-    node.enumerated = false;
-    node.enumerator = `N.${nextSlot(node)}`;
   }
 }
 
@@ -267,7 +300,10 @@ const sideBySideDirective = {
       return [];
     }
     const line = data.node.position?.start?.line ?? 0;
-    const label = `side-by-side-l${line}`;
+    // Deterministic and unique project-wide: two pages can easily have a
+    // directive on the same line, so include the page name in the label.
+    const pageStem = createHtmlId(basename(vfile.path ?? 'page').replace(/\.[^.]+$/, '')) ?? 'page';
+    const label = `side-by-side-${pageStem}-l${line}`;
     const extraClass = opts.class ? ` ${opts.class}` : '';
     return [
       {

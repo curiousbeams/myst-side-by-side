@@ -146,6 +146,10 @@ myst start
 - Cross-page references to `.new` labels render without a number (the mirror
   map is per page).
 - Footnote labels must be unique across the two documents shown on one page.
+- A site-wide `numbering.enumerator` template (e.g. `15.%s`) is respected by
+  paired equations (the mirrored side copies the templated number) and by all
+  host-page content, but the side-tagged markers (Figure O.X / N.X, footnote
+  O.X / N.X / C.X) are panel-scoped by design and do not take the prefix.
 - mystmd's anywidget support is alpha; if its node shape changes, only the
   emit site in `side-by-side.mjs` needs updating.
 
