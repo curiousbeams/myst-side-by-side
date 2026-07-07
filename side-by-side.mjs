@@ -23,8 +23,31 @@
  *   that target new-side labels.
  */
 
+import fs from 'node:fs';
+import path from 'node:path';
+
 const HOOK_RE = /^(.+)[._](old|new)$/;
 const WIDGET_CLASS = 'side-by-side';
+
+/** Client widget fallback when no local copy is present: fetched and cached
+ * by MyST at build time, so a clean build always pulls the latest version.
+ * Pin by replacing `main` with a tag or commit SHA. */
+const WIDGET_FILE = 'side_by_side_widget.mjs';
+const REMOTE_WIDGET_ESM = `https://raw.githubusercontent.com/curiousbeams/myst-side-by-side/main/${WIDGET_FILE}`;
+
+/** Resolution order: explicit :widget: option; a side_by_side_widget.mjs
+ * sitting next to the current page; the published module on GitHub. */
+function resolveWidgetEsm(opts, vfile) {
+  if (opts.widget) return opts.widget;
+  try {
+    if (vfile.path && fs.existsSync(path.join(path.dirname(vfile.path), WIDGET_FILE))) {
+      return `./${WIDGET_FILE}`;
+    }
+  } catch {
+    // fall through to the remote module
+  }
+  return REMOTE_WIDGET_ESM;
+}
 
 /** Replica of myst-common's createHtmlId, used as a fallback when a hook
  * node has no html_id assigned (the DOM id is what the client widget needs). */
@@ -198,7 +221,7 @@ const sideBySideDirective = {
     },
     widget: {
       type: String,
-      doc: 'Path to the side-by-side anywidget ESM module, relative to this page. Default: ./side_by_side_widget.mjs.',
+      doc: 'Path or URL of the side-by-side anywidget ESM module. Default: side_by_side_widget.mjs next to this page if present, otherwise the published module on GitHub.',
     },
     class: {
       type: String,
@@ -235,7 +258,7 @@ const sideBySideDirective = {
           },
           {
             type: 'anywidget',
-            esm: opts.widget ?? './side_by_side_widget.mjs',
+            esm: resolveWidgetEsm(opts, vfile),
             id: `${label}-widget`,
             model: {
               container: createHtmlId(label),

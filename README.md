@@ -37,20 +37,30 @@ scrollable panels.
 
 ## Installation
 
-Copy the two plugin files into your MyST project:
-
-- [`side-by-side.mjs`](side-by-side.mjs) — the directive and its two
-  transforms (register this one in `myst.yml`);
-- [`side_by_side_widget.mjs`](side_by_side_widget.mjs) — the client widget
-  (its path resolves relative to the page that uses the directive; override
-  with the `:widget:` option if your pages live in subfolders).
+Add the plugin URL to your `myst.yml` — nothing to copy. MyST fetches and
+caches both the plugin and its client widget at build time, so a clean build
+always pulls the latest version:
 
 ```yaml
 # myst.yml
 project:
   plugins:
-    - side-by-side.mjs
+    - https://raw.githubusercontent.com/curiousbeams/myst-side-by-side/main/side-by-side.mjs
 ```
+
+To pin a version, replace `main` in the URL with a tag or commit SHA (and
+pass the matching widget URL via the `:widget:` option).
+
+### Local installation (offline builds, development)
+
+Alternatively, copy the two files into your MyST project:
+
+- [`side-by-side.mjs`](side-by-side.mjs) — the directive and its two
+  transforms (register this one in `myst.yml` by path, as above);
+- [`side_by_side_widget.mjs`](side_by_side_widget.mjs) — the client widget.
+  It is picked up automatically when it sits next to the page that uses the
+  directive; otherwise point the `:widget:` option at it (any path relative
+  to the page, or a URL).
 
 ## Usage
 
@@ -76,7 +86,7 @@ Point the directive at the two documents, exactly like `{include}`:
 | `split`                   | `50%`                       | Initial width of the left (old) panel; the divider stays draggable      |
 | `highlight`               | `true`                      | Flash the paired block after a click-to-jump                            |
 | `old-title` / `new-title` | the file names              | Panel header titles                                                     |
-| `widget`                  | `./side_by_side_widget.mjs` | Path to the AnyWidget ESM module, relative to the page                  |
+| `widget`                  | auto                        | Path or URL of the AnyWidget ESM module; defaults to `side_by_side_widget.mjs` next to the page if present, else the published module on GitHub |
 | `class`                   | —                           | Extra CSS classes for the container                                     |
 
 Snake-case aliases are accepted (`max_height`, `old_title`, `new_title`, and

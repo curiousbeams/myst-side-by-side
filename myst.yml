@@ -8,7 +8,8 @@ project:
   # authors: []
   # github:
   plugins:
-    - side-by-side.mjs
+    # - side-by-side.mjs
+    - https://raw.githubusercontent.com/curiousbeams/myst-side-by-side/main/side-by-side.mjs
   # To autogenerate a Table of Contents, run "myst init --write-toc"
   exclude:
     - README.md
