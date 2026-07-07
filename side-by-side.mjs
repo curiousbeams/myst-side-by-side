@@ -69,10 +69,6 @@ function basename(file) {
   return String(file).split('/').pop();
 }
 
-function capitalize(kind) {
-  return `${kind.slice(0, 1).toUpperCase()}${kind.slice(1)}`;
-}
-
 function hasClass(node, className) {
   return (
     node.type === 'div' &&
@@ -106,17 +102,20 @@ function pairHooks(oldHooks, newHooks, warn) {
   const oldByStem = new Map(oldHooks.map((h) => [h.stem, h]));
   const newByStem = new Map(newHooks.map((h) => [h.stem, h]));
   const pairs = [];
+  // Unpaired figures/tables are legitimate (a translation may drop or add
+  // figures; they get their own side-tagged number), so don't warn on them.
+  const warnable = (node) => node.type !== 'container';
   for (const hook of oldHooks) {
     const partner = newByStem.get(hook.stem);
     if (partner) {
       pairs.push({ stem: hook.stem, old: hook.node, new: partner.node });
-    } else if (warn) {
+    } else if (warn && warnable(hook.node)) {
       warn(`hook "${hook.node.identifier}" has no "${hook.stem}(.|_)new" counterpart`, hook.node);
     }
   }
   if (warn) {
     for (const hook of newHooks) {
-      if (!oldByStem.has(hook.stem)) {
+      if (!oldByStem.has(hook.stem) && warnable(hook.node)) {
         warn(`hook "${hook.node.identifier}" has no "${hook.stem}(.|_)old" counterpart`, hook.node);
       }
     }
@@ -146,10 +145,42 @@ function setWidgetPairs(widget, pairs) {
   });
 }
 
-/** Types that participate in global target numbering and should be
- * suppressed inside panels unless they are the old side of a pair. */
-function enumerableNodes(panel, utils) {
-  return [...utils.selectAll('math', panel), ...utils.selectAll('container', panel)];
+/**
+ * Side-tagged numbering for figures/tables inside the panels. Every labeled
+ * container consumes one slot X from a page-wide, per-kind counter; a
+ * matched pair shares its X, displayed as "Figure O.X" / "Figure N.X".
+ * Because the enumerator is set before MyST's global enumeration (with
+ * `enumerated: false`, so the host page's own counters are untouched),
+ * caption numbers and cross-references resolve natively. Unlabeled panel
+ * containers stay unnumbered — they cannot be cross-referenced anyway.
+ */
+function tagPanelContainers(info, utils, kindCounts) {
+  const nextSlot = (node) => {
+    const kind = node.kind ?? 'figure';
+    kindCounts[kind] = (kindCounts[kind] ?? 0) + 1;
+    return kindCounts[kind];
+  };
+  const partners = new Map(
+    info.pairs
+      .filter((pair) => pair.old.type === 'container' && pair.new.type === 'container')
+      .map((pair) => [pair.old, pair.new]),
+  );
+  const pairedNew = new Set(partners.values());
+  for (const node of utils.selectAll('container', info.oldPanel)) {
+    if (!node.identifier) continue;
+    node.enumerated = false;
+    node.enumerator = `O.${nextSlot(node)}`;
+    const partner = partners.get(node);
+    if (partner) {
+      partner.enumerated = false;
+      partner.enumerator = node.enumerator.replace(/^O\./, 'N.');
+    }
+  }
+  for (const node of utils.selectAll('container', info.newPanel)) {
+    if (pairedNew.has(node) || !node.identifier) continue;
+    node.enumerated = false;
+    node.enumerator = `N.${nextSlot(node)}`;
+  }
 }
 
 /** Footnotes in a panel: definitions plus a stable ordering (first-reference
@@ -290,6 +321,7 @@ const sideBySideHooksTransform = {
       message.fatal = false;
     };
     const processedFootnotes = new Set();
+    const containerKindCounts = {};
     let pairCount = 0;
     const pageMarkers = [];
     const pageComments = [];
@@ -304,16 +336,19 @@ const sideBySideHooksTransform = {
       if (!info) continue;
       if (info.widget) widgets.push(info.widget);
       const pairedStems = new Set(info.pairs.map((p) => p.stem));
-      // Old-side equations/figures that are part of a pair keep their place
-      // in the global numbering; everything else in the panels is unnumbered.
-      for (const node of enumerableNodes(info.oldPanel, utils)) {
+      // Old-side equations that are part of a pair keep their place in the
+      // global numbering (mirrored onto the new side at project stage);
+      // other panel equations are unnumbered, as is conventional.
+      for (const node of utils.selectAll('math', info.oldPanel)) {
         const match = typeof node.identifier === 'string' && node.identifier.match(HOOK_RE);
         const paired = match && match[2] === 'old' && pairedStems.has(match[1]);
         if (!paired) node.enumerated = false;
       }
-      for (const node of enumerableNodes(info.newPanel, utils)) {
+      for (const node of utils.selectAll('math', info.newPanel)) {
         node.enumerated = false;
       }
+      // Figures/tables always deserve a number; tag them by side.
+      tagPanelContainers(info, utils, containerKindCounts);
       // Footnotes follow the same .old/.new label contract: matched labels
       // are a translated pair and share a number (O.X / N.X, X continuing
       // across containers on the page); anything else is a translator
@@ -394,78 +429,40 @@ const sideBySideHooksTransform = {
 
 const sideBySideEquationsTransform = {
   name: 'side-by-side-equations',
-  doc: 'Mirror old-side equation/figure numbers onto new-side counterparts after global enumeration.',
+  doc: 'Mirror old-side equation numbers onto new-side counterparts after global enumeration.',
   stage: 'project',
   plugin: (_, utils) => (tree) => {
-    const mirrored = new Map(); // new-side identifier -> { enumerator, kind }
+    const mirrored = new Map(); // new-side identifier -> enumerator
     for (const container of findContainers(tree, utils)) {
       const info = analyzeContainer(container, utils, undefined);
       if (!info) continue;
       for (const pair of info.pairs) {
-        if (pair.old.type !== pair.new.type) continue;
-        if (pair.old.type !== 'math' && pair.old.type !== 'container') continue;
+        if (pair.old.type !== 'math' || pair.new.type !== 'math') continue;
         if (pair.old.enumerator == null) continue;
-        const enumerator = pair.old.enumerator;
-        pair.new.enumerator = enumerator;
-        const kind = pair.old.type === 'math' ? 'equation' : (pair.old.kind ?? 'figure');
-        const entry = { enumerator, kind };
-        if (pair.new.identifier) mirrored.set(pair.new.identifier, entry);
-        // Figures/tables show their number in the caption; that was injected
-        // during reference resolution, when the new side was still
-        // unnumbered — replicate it now.
-        if (pair.new.type === 'container') {
-          const caption = (pair.new.children ?? []).find((child) => child.type === 'caption');
-          const paragraph = caption ? utils.select('paragraph', caption) : undefined;
-          // References to unnumbered captioned figures were rendered with
-          // the caption text ({name} template); remember it for the
-          // auto-generated check below, before the number is prepended.
-          if (paragraph) entry.title = textOf(paragraph, utils);
-          if (paragraph) {
-            if (paragraph.children?.[0]?.type === 'captionNumber') {
-              paragraph.children = paragraph.children.slice(1);
-            }
-            const template = `${capitalize(kind)} %s:`;
-            paragraph.children = [
-              {
-                type: 'captionNumber',
-                kind,
-                label: pair.new.label,
-                identifier: pair.new.identifier,
-                html_id: pair.new.html_id,
-                enumerator,
-                template,
-                children: [{ type: 'text', value: template.replace('%s', enumerator) }],
-              },
-              ...(paragraph.children ?? []),
-            ];
-          }
-        }
+        pair.new.enumerator = pair.old.enumerator;
+        if (pair.new.identifier) mirrored.set(pair.new.identifier, pair.old.enumerator);
       }
       // Re-sync the widget pair map now that html_ids are final.
       setWidgetPairs(info.widget, info.pairs);
     }
     if (mirrored.size === 0) return;
-    // References to new-side labels resolved before the mirror above, while
-    // the target was still unnumbered, so they were rendered with the named
-    // template (plain "Equation"/"Figure") instead of the numbered one.
-    // Upgrade auto-generated reference text to the numbered form; leave
-    // custom link text (e.g. [see here](#fig.new)) alone.
+    // References to new-side equations resolved before the mirror above,
+    // while the target was still unnumbered, so they were rendered with the
+    // named template (plain "Equation") instead of the numbered "(%s)".
+    // Upgrade auto-generated reference text; leave custom link text alone.
     for (const xref of utils.selectAll('crossReference', tree)) {
-      const entry = mirrored.get(xref.identifier);
-      if (entry == null) continue;
-      const { enumerator, kind, title } = entry;
+      const enumerator = mirrored.get(xref.identifier);
+      if (enumerator == null) continue;
       xref.enumerator = enumerator;
       const joined = textOf(xref, utils);
       const autoGenerated =
         joined.length === 0 ||
-        joined === capitalize(kind) ||
-        (title != null && joined === title) ||
+        joined === 'Equation' ||
         joined.includes('%s') ||
         joined.includes('??');
       if (autoGenerated) {
-        const template = kind === 'equation' ? '(%s)' : `${capitalize(kind)} %s`;
-        xref.template = template;
-        xref.children = [{ type: 'text', value: template.replace('%s', enumerator) }];
+        xref.template = '(%s)';
+        xref.children = [{ type: 'text', value: `(${enumerator})` }];
         xref.resolved = true;
       }
     }

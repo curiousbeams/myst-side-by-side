@@ -8,9 +8,10 @@ project:
   # authors: []
   # github:
   plugins:
-    # - side-by-side.mjs
-    - https://raw.githubusercontent.com/curiousbeams/myst-side-by-side/main/side-by-side.mjs
-  # To autogenerate a Table of Contents, run "myst init --write-toc"
+    # This repository is the plugin source, so it loads the local file;
+    # consumers can use the URL form instead (see README):
+    # - https://raw.githubusercontent.com/curiousbeams/myst-side-by-side/main/side-by-side.mjs
+    - side-by-side.mjs
   exclude:
     - README.md
     - new/*.md

@@ -15,9 +15,13 @@ scrollable panels.
 - **The `.old` / `.new` contract**: author-specified labels sharing a stem
   (`opening.old` ↔ `opening.new`, or `opening_old` / `opening_new`) pair
   corresponding passages — the documents do *not* need matching structure.
-- **Paired numbering**: equations and figures labeled with matching stems
-  display the *same* number in both panels and consume one slot in the
-  page-wide sequence; unpaired or unlabeled ones stay unnumbered.
+- **Paired numbering**: equations labeled with matching stems display the
+  *same* number in both panels and consume one slot in the page-wide
+  sequence; unpaired equations stay unnumbered, as is conventional.
+- **Side-tagged figures**: a translation may drop or add figures, so labeled
+  panel figures are numbered by side — a matched pair shares its index
+  (*Figure O.1* ↔ *Figure N.1*) and a figure without a counterpart keeps its
+  own slot (*Figure N.2* with no O.2). All of them stay cross-referenceable.
 - **Footnotes & comments**: matched footnotes (`[^note.old]` ↔ `[^note.new]`)
   are numbered as a pair, tagged by side (O.1 / N.1); footnotes without a
   counterpart become translator *comments* (C.1, C.2, …) collected in their
@@ -98,7 +102,7 @@ Snake-case aliases are accepted (`max_height`, `old_title`, `new_title`, and
 | --------- | ----------------------- | ----------------------- | ----------------------------------------------------------- |
 | Paragraph | `(opening_old)=`        | `(opening_new)=`        | Click-to-jump anchor between the panels                     |
 | Equation  | `\label{eq_a.old}`      | `\label{eq_a.new}`      | Same number in both panels, one slot in the global sequence |
-| Figure    | `:label: fig_a.old`     | `:label: fig_a.new`     | Same caption number in both panels                          |
+| Figure    | `:label: fig_a.old`     | `:label: fig_a.new`     | Shared index, tagged by side: Figure O.1 / Figure N.1; unpaired figures keep their own slot |
 | Footnote  | `[^note.old]`           | `[^note.new]`           | Paired numbering, tagged by side: O.1 / N.1                 |
 | Footnote  | `[^anything]` (no pair) | `[^anything]` (no pair) | Translator comment: C.1, C.2, … in a separate section       |
 
@@ -125,12 +129,12 @@ myst start
   a standard `include` node, so MyST's own machinery loads the files) plus an
   `anywidget` node carrying the options.
 - A **document-stage transform** pairs `.old`/`.new` hooks per container,
-  warns about unmatched ones, excludes new-side and unpaired
-  equations/figures from global numbering, applies the footnote contract, and
-  writes the pair map into the widget model.
+  warns about unmatched ones, excludes new-side and unpaired equations from
+  global numbering, assigns the side-tagged figure numbers, applies the
+  footnote contract, and writes the pair map into the widget model.
 - A **project-stage transform** runs after MyST's global enumeration and
-  mirrors each old-side equation/figure number onto its new-side twin,
-  including caption numbers and already-resolved cross-references.
+  mirrors each old-side equation number onto its new-side twin, patching
+  already-resolved cross-references.
 - The **widget** (AnyWidget contract) applies the flex layout, headers,
   divider, click-to-jump, and restyles the theme's footnote footer with the
   side-tagged markers, cloning it for the Comments section.
