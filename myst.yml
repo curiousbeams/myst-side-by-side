@@ -1,0 +1,21 @@
+# See docs at: https://mystmd.org/guide/frontmatter
+version: 1
+project:
+  id: translation-directive-demo
+  title: Side-by-side Document translation
+  description: Custom directive to show two rendered myst documents side-by-side, linking between the two.
+  # keywords: []
+  # authors: []
+  # github:
+  plugins:
+    - side-by-side.mjs
+  # To autogenerate a Table of Contents, run "myst init --write-toc"
+  exclude:
+    - README.md
+    - new/*.md
+    - old/*.md
+site:
+  template: book-theme
+  # options:
+  #   favicon: favicon.ico
+  #   logo: site_logo.png
