@@ -262,7 +262,7 @@ const sideBySideDirective = {
     'max-height': {
       type: String,
       alias: ['max_height'],
-      doc: 'Maximum panel height (any CSS length). Default: 500px.',
+      doc: 'Maximum panel height (any CSS length). Default: none.',
     },
     split: {
       type: String,
@@ -330,7 +330,7 @@ const sideBySideDirective = {
             model: {
               container: createHtmlId(label),
               split: opts.split ?? '50%',
-              maxHeight: opts['max-height'] ?? '500px',
+              maxHeight: opts['max-height'] ?? 'none',
               highlight: opts.highlight ?? true,
               oldTitle: opts['old-title'] ?? basename(opts.old),
               newTitle: opts['new-title'] ?? basename(opts.new),
